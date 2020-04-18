@@ -6,6 +6,7 @@ sympsi.
 __all__ = [
     'show_first_few_terms',
     'html_table',
+    'latex_align',
     'exchange_integral_order',
     'pull_outwards',
     'push_inwards',
@@ -23,6 +24,8 @@ __all__ = [
     'extract_all_operators',
     'operator_order',
     'operator_sort_by_order',
+    'collect_by_order',
+    'drop_higher_order_terms',
     'drop_terms_containing',
     'drop_c_number_terms',
     'subs_single',
@@ -45,7 +48,7 @@ from collections import namedtuple
 from sympy import (Add, Mul, Pow, exp, latex, Integral, Sum, Integer, Symbol,
                    I, pi, simplify, oo, DiracDelta, KroneckerDelta, collect,
                    factorial, diff, Function, Derivative, Eq, symbols,
-                   Matrix, Equality, MatMul, Dummy)
+                   Matrix, MatMul, Dummy)
 
 from sympy.core.sympify import _sympify
 from sympy.core.relational import Relational
@@ -85,6 +88,10 @@ def html_table(data):
          for row in data])
 
     return HTML(table_code)
+
+def latex_align(data, col_delim=" & "):
+    return Latex("\\begin{{align*}}\n{}\n\\end{{align*}}".format(" \\\\\n".join(
+        [col_delim.join([latex(col) for col in row]) for row in data])))
 
 
 # -----------------------------------------------------------------------------
@@ -721,6 +728,28 @@ def operator_order(op):
 def operator_sort_by_order(ops):
     return sorted(ops, key=operator_order)
 
+def collect_by_order(e):
+    """
+    return dict d such that e == Add(*[d[n] for n in d])
+    where Expr d[n] contains only terms with operator order n
+    """
+    args = e.args if isinstance(e, Add) else [e]
+    # max_order = max([operator_order(arg) for arg in args])
+    d = {}
+    for arg in args:
+        n = operator_order(arg)
+        if n in d: d[n] += arg
+        else: d[n] = arg
+
+    return d
+
+def drop_higher_order_terms(e, order):
+    """
+    Drop any terms with operator order greater than order arg
+    """
+    if isinstance(e, Add):
+        e = Add(*(arg for arg in e.args if operator_order(arg) <= order))
+    return e
 
 def drop_terms_containing(e, e_drops):
     """
@@ -1339,8 +1368,11 @@ def semi_classical_eqm_matrix_form(sc_eqm):
     A = Matrix(As)
     b = Matrix([[sc_eqm.sc_ode[op].rhs.subs({A: 0 for A in As})] for op in ops])
 
-    M = Matrix([[((sc_eqm.sc_ode[op1].rhs - b[m]).subs({A: 0 for A in (set(As) - set([sc_eqm.op_func_map[op2]]))}) / sc_eqm.op_func_map[op2]).expand()
+    M = Matrix([[((sc_eqm.sc_ode[op1].rhs - b[m]).subs(
+        {A: 0 for A in (set(As) - set([sc_eqm.op_func_map[op2]]))}) /
+                  sc_eqm.op_func_map[op2]).expand()
                  for m, op1 in enumerate(ops)]
                 for n, op2 in enumerate(ops)]).T
 
-    return Equality(-Derivative(A, sc_eqm.t),  b + MatMul(M, A)), A, M, b
+    return Eq(-Derivative(A, sc_eqm.t),
+              Add(b, MatMul(M, A), evaluate=False), evaluate=False), A, M, b
