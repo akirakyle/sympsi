@@ -39,7 +39,8 @@ __all__ = [
     'semi_classical_eqm_matrix_form'
     ]
 
-import warnings
+from multiprocessing import Pool
+from functools import partial
 from collections import namedtuple
 from sympy import (Add, Mul, Pow, exp, latex, Integral, Sum, Integer, Symbol,
                    I, pi, simplify, oo, DiracDelta, KroneckerDelta, collect,
@@ -51,8 +52,9 @@ from sympy.core.relational import Relational
 from sympy import (sin, cos, sinh, cosh)
 from sympy.physics.quantum import Operator, Commutator, Dagger
 from sympy.physics.quantum.operatorordering import normal_ordered_form
-from sympy.physics.quantum.expectation import Expectation
 from sympy.physics.quantum.pauli import (SigmaX, SigmaY, SigmaMinus, SigmaPlus)
+
+from sympsi.expectation import Expectation
 
 debug = False
 
@@ -966,8 +968,9 @@ def bch_expansion(A, B, N=6, collect_operators=None, independent=False,
     # Use BCH expansion of order N
 
     if debug:
-        print("bch_expansion: ", A, B)
+        print("bch_expansion: A =", A, "   B =", B)
 
+    A = A.expand()
     cno = split_coeff_operator(A)
     if isinstance(cno, list):
         nvar = len(cno)
@@ -981,7 +984,7 @@ def bch_expansion(A, B, N=6, collect_operators=None, independent=False,
         c_list, o_list = [cno[0]], [cno[1]]
 
     if debug:
-        print("A coefficient: ", c_list)
+        print("A coefficient: ", c_list, "    A operator: ", o_list)
 
     rep_list = []
     var_list = []
@@ -1007,19 +1010,20 @@ def bch_expansion(A, B, N=6, collect_operators=None, independent=False,
             var_list.append(sym)
 
     A_rep = A.subs({var_list[n]: rep_list[n] for n in range(nvar)})
+    if debug: print("A_rep: ", A_rep)
 
     e_bch_rep = _bch_expansion(A_rep, B, N=N).doit(independent=independent)
-
-    if debug:
-        print("simplify: ")
 
     e = qsimplify(normal_ordered_form(e_bch_rep.expand(),
                                       recursive_limit=25,
                                       independent=independent).expand())
     if debug:
-        print("extract operators: ")
+        print("simplify: ", e)
 
     ops = extract_operator_products(e, independent=independent)
+
+    if debug:
+        print("extract operators: ", ops)
 
     # make sure that product operators comes first in the list
     ops = list(reversed(sorted(ops, key=lambda x: len(str(x)))))
@@ -1033,10 +1037,10 @@ def bch_expansion(A, B, N=6, collect_operators=None, independent=False,
         e_collected = collect(e, ops)
 
     if debug:
-        print("search for series expansions: ", expansion_search)
+        print("e_collected: ", e_collected)
 
     if debug:
-        print("e_collected: ", e_collected)
+        print("search for series expansions: ", expansion_search)
 
     if expansion_search and c_list:
         e_collected = _expansion_search(e_collected, rep_list, N)
@@ -1068,9 +1072,7 @@ def unitary_transformation(U, O, N=6, collect_operators=None,
                          "U = exp(A)")
 
     A = U.exp
-
-    if debug:
-        print("unitary_transformation: using A = ", A)
+    if debug: print("unitary_transformation: using A = ", A)
 
     if allinone:
         return bch_expansion(A, O, N=N, collect_operators=collect_operators,
@@ -1078,11 +1080,20 @@ def unitary_transformation(U, O, N=6, collect_operators=None,
                              expansion_search=expansion_search)
     else:
         ops = extract_operators(O.expand())
-        ops_subs = {op: bch_expansion(A, op, N=N,
-                                      collect_operators=collect_operators,
-                                      independent=independent,
-                                      expansion_search=expansion_search)
-                    for op in ops}
+        if debug: print("ops: ", ops)
+
+        bch_fn = partial(bch_expansion, A, N=N,
+                         collect_operators=collect_operators,
+                         independent=independent,
+                         expansion_search=expansion_search)
+
+        with Pool() as p:
+            ops_subs = {op: sub for op, sub in zip(ops, p.map(bch_fn, ops))}
+        #ops_subs = {op: bch_expansion(A, op, N=N,
+        #                              collect_operators=collect_operators,
+        #                              independent=independent,
+        #                              expansion_search=expansion_search)
+        #            for op in ops}
 
         #return O.subs(ops_subs, simultaneous=True) # XXX: this this
         return subs_single(O, ops_subs)
