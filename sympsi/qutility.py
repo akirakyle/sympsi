@@ -18,7 +18,6 @@ __all__ = [
     'qsimplify',
     'pauli_represent_minus_plus',
     'pauli_represent_x_y',
-    'split_coeff_operator',
     'extract_operators',
     'extract_operator_products',
     'extract_all_operators',
@@ -565,55 +564,6 @@ def pauli_represent_x_y(e):
 # -----------------------------------------------------------------------------
 # Utility functions for manipulating operator expressions
 #
-def split_coeff_operator(e):
-    """
-    Split a product of coefficients, commuting variables and quantum
-    operators into two factors containing the commuting factors and the
-    quantum operators, resepectively.
-
-    Returns:
-    c_factor, o_factors:
-        Commuting factors and noncommuting (operator) factors
-    """
-    if isinstance(e, Symbol):
-        return e, 1
-
-    if isinstance(e, Operator):
-        return 1, e
-
-    if isinstance(e, Mul):
-        c_args = []
-        o_args = []
-
-        for arg in e.args:
-            if isinstance(arg, Operator):
-                o_args.append(arg)
-            elif isinstance(arg, Pow):
-                c, o = split_coeff_operator(arg.base)
-
-                if c and c != 1:
-                    c_args.append(c ** arg.exp)
-                if o and o != 1:
-                    o_args.append(o ** arg.exp)
-            elif isinstance(arg, Add):
-                if arg.is_commutative:
-                    c_args.append(arg)
-                else:
-                    o_args.append(arg)
-            else:
-                c_args.append(arg)
-
-        return Mul(*c_args), Mul(*o_args)
-
-    if isinstance(e, Add):
-        return [split_coeff_operator(arg) for arg in e.args]
-
-    if debug:
-        print("Warning: Unrecognized type of e: %s" % type(e))
-
-    return None, None
-
-
 def extract_operators(e, independent=False):
     """
     Return a list of unique quantum operator products in the
@@ -653,9 +603,8 @@ def extract_operator_products(e, independent=False):
             ops += extract_operator_products(arg, independent=independent)
 
     elif isinstance(e, Mul):
-        c, o = split_coeff_operator(e)
-        if o != 1:
-            ops.append(o)
+        c, nc = e.args_cnc()
+        if nc: ops.append(Mul(*nc))
     else:
         if debug:
             print("Unrecongized type: %s: %s" % (type(e), str(e)))
@@ -666,8 +615,7 @@ def extract_operator_products(e, independent=False):
         if isinstance(no_op, (Mul, Operator, Pow)):
             no_ops.append(no_op)
         elif isinstance(no_op, Add):
-            for sub_no_op in extract_operator_products(no_op, independent=independent):
-                no_ops.append(sub_no_op)
+            no_ops += extract_operator_products(no_op, independent=independent)
         else:
             raise ValueError("Unsupported type in loop over ops: %s: %s" %
                              (type(no_op), no_op))
@@ -991,46 +939,32 @@ def _expansion_search(e, rep_list, N):
         print("Failed to identify series expansions: " + str(e))
         return e
 
-
 def bch_expansion(A, B, N=6, collect_operators=None, independent=False,
                   expansion_search=True):
 
     # Use BCH expansion of order N
-
-    if debug:
-        print("bch_expansion: A =", A, "   B =", B)
+    if debug: print("bch_expansion: A =", A, "   B =", B)
 
     A = A.expand()
-    cno = split_coeff_operator(A)
-    if isinstance(cno, list):
-        nvar = len(cno)
-        c_list = []
-        o_list = []
-        for n in range(nvar):
-            c_list.append(cno[n][0])
-            o_list.append(cno[n][1])
+
+    if isinstance(A, Add):
+        args = A.args
     else:
-        nvar = 1
-        c_list, o_list = [cno[0]], [cno[1]]
+        args = [A]
+    cnc = [arg.args_cnc() for arg in args]
+    c_list, o_list = zip(*[(Mul(*c), Mul(*nc)) for c, nc in cnc])
 
-    if debug:
-        print("A coefficient: ", c_list, "    A operator: ", o_list)
+    if debug: print("A coefficient: ", c_list, "    A operator: ", o_list)
 
-    rep_list = []
     var_list = []
-
-    for n in range(nvar):
-        rep_list.append(Dummy())
-
-        coeff, sym = c_list[n].as_coeff_Mul()
+    for coeff, sym in (c.as_coeff_Mul() for c in c_list):
         if isinstance(sym, Mul):
             sym_ = simplify(sym)
             if I in sym_.args:
                 var_list.append(sym_/I)
             elif any([isinstance(arg, exp) for arg in sym_.args]):
-                nexps = Mul(*[arg for arg in sym_.args
-                              if not isinstance(arg, exp)])
-                exps = Mul(*[arg for arg in sym_.args if isinstance(arg, exp)])
+                nexps = Mul(*[a for a in sym_.args if not isinstance(a, exp)])
+                exps = Mul(*[a for a in sym_.args if isinstance(a, exp)])
 
                 if I in simplify(exps).exp.args:
                     var_list.append(nexps)
@@ -1039,7 +973,8 @@ def bch_expansion(A, B, N=6, collect_operators=None, independent=False,
         else:
             var_list.append(sym)
 
-    A_rep = A.subs({var_list[n]: rep_list[n] for n in range(nvar)})
+    rep_list = [Dummy() for _ in range(len(var_list))]
+    A_rep = A.subs({var_list[i]: rep_list[i] for i in range(len(var_list))})
     if debug: print("A_rep: ", A_rep)
 
     e_bch_rep = _bch_expansion(A_rep, B, N=N).doit(independent=independent)
@@ -1047,40 +982,27 @@ def bch_expansion(A, B, N=6, collect_operators=None, independent=False,
     e = qsimplify(normal_ordered_form(e_bch_rep.expand(),
                                       recursive_limit=25,
                                       independent=independent).expand())
-    if debug:
-        print("simplify: ", e)
+    if debug: print("simplify: ", e)
 
     ops = extract_operator_products(e, independent=independent)
-
-    if debug:
-        print("extract operators: ", ops)
+    if debug: print("extract operators: ", ops)
 
     # make sure that product operators comes first in the list
     ops = list(reversed(sorted(ops, key=lambda x: len(str(x)))))
-
-    if debug:
-        print("operators in expression: ", ops)
+    if debug: print("operators in expression: ", ops)
 
     if collect_operators:
         e_collected = qcollect(e, collect_operators)
     else:
         e_collected = qcollect(e, ops)
+    if debug: print("e_collected: ", e_collected)
 
-    if debug:
-        print("e_collected: ", e_collected)
-
-    if debug:
-        print("search for series expansions: ", expansion_search)
-
-    if expansion_search and c_list:
+    if debug: print("search for series expansions: ", expansion_search)
+    if expansion_search and rep_list:
         e_collected = _expansion_search(e_collected, rep_list, N)
-        e_collected = e_collected.subs({rep_list[n]: var_list[n]
-                                        for n in range(nvar)})
 
-        return e_collected
-    else:
-        return e_collected.subs(
-            {rep_list[n]: var_list[n] for n in range(nvar)})
+    return e_collected.subs({rep_list[i]: var_list[i]
+                             for i in range(len(var_list))})
 
 
 # -----------------------------------------------------------------------------
