@@ -49,10 +49,10 @@ from sympy import (Add, Mul, Pow, exp, latex, Integral, Sum, Integer, Symbol,
 from sympy.core.sympify import _sympify
 from sympy.core.relational import Relational
 from sympy import (sin, cos, sinh, cosh)
-from sympsi import Operator, Commutator, Dagger
-from sympsi.operatorordering import normal_ordered_form
-from sympsi.expectation import Expectation
-from sympsi.pauli import (SigmaX, SigmaY, SigmaMinus, SigmaPlus)
+from sympy.physics.quantum import Operator, Commutator, Dagger
+from sympy.physics.quantum.operatorordering import normal_ordered_form
+from sympy.physics.quantum.expectation import Expectation
+from sympy.physics.quantum.pauli import (SigmaX, SigmaY, SigmaMinus, SigmaPlus)
 
 debug = False
 
