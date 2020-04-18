@@ -58,6 +58,7 @@ from sympy.physics.quantum.operatorordering import normal_ordered_form
 from sympy.physics.quantum.pauli import (SigmaX, SigmaY, SigmaMinus, SigmaPlus)
 
 from sympsi.expectation import Expectation
+from sympsi.qcollect import qcollect
 
 debug = False
 
@@ -1061,9 +1062,9 @@ def bch_expansion(A, B, N=6, collect_operators=None, independent=False,
         print("operators in expression: ", ops)
 
     if collect_operators:
-        e_collected = collect(e, collect_operators)
+        e_collected = qcollect(e, collect_operators)
     else:
-        e_collected = collect(e, ops)
+        e_collected = qcollect(e, ops)
 
     if debug:
         print("e_collected: ", e_collected)
