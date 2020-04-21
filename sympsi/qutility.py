@@ -28,7 +28,6 @@ __all__ = [
     'drop_terms_containing',
     'drop_c_number_terms',
     'subs_single',
-    'SymEq',
     'recursive_commutator',
     'bch_expansion',
     'unitary_transformation',
@@ -768,25 +767,6 @@ def subs_single(O, subs_map):
         return O
 
 
-class SymEq(Relational):
-    """A symbolic equality that is never automatically evaluated.
-    """
-    rel_op = '=='
-
-    __slots__ = []
-
-    is_Equality = True
-
-    def __new__(cls, lhs, rhs=0, **options):
-        lhs = _sympify(lhs)
-        rhs = _sympify(rhs)
-
-        return Relational.__new__(cls, lhs, rhs, **options)
-
-    @classmethod
-    def _eval_relation(cls, lhs, rhs):
-        return None
-
 # -----------------------------------------------------------------------------
 # Commutators and BCH expansions
 #
@@ -1041,11 +1021,6 @@ def unitary_transformation(U, O, N=6, collect_operators=None,
 
         with Pool() as p:
             ops_subs = {op: sub for op, sub in zip(ops, p.map(bch_fn, ops))}
-        #ops_subs = {op: bch_expansion(A, op, N=N,
-        #                              collect_operators=collect_operators,
-        #                              independent=independent,
-        #                              expansion_search=expansion_search)
-        #            for op in ops}
 
         #return O.subs(ops_subs, simultaneous=True) # XXX: this this
         return subs_single(O, ops_subs)
