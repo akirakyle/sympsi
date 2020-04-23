@@ -12,7 +12,7 @@ __all__ = [
     ]
 
 from collections import defaultdict
-from sympy import (Add, Mul, exp, S, I, diff, simplify)
+from sympy import (Add, Mul, Pow, exp, S, I, diff, simplify, factor)
 from sympy.core.basic import preorder_traversal
 from sympy.physics.quantum import Operator, Commutator, Dagger
 
@@ -35,8 +35,19 @@ def collect_by_nc(expr, evaluate=True):
     else:
         return collected
 
+def operator_order(op):
+    if isinstance(op, Operator):
+        return 1
 
-def collect_by_order(expr):
+    if isinstance(op, Mul):
+        return sum([operator_order(arg) for arg in op.args])
+
+    if isinstance(op, Pow):
+        return operator_order(op.base) * op.exp
+
+    return 0
+
+def collect_by_order(expr, evaluate=True):
     """
     return dict d such that expr == Add(*[d[n] for n in d])
     where Expr d[n] contains only terms with operator order n
@@ -48,7 +59,11 @@ def collect_by_order(expr):
         if n in d: d[n] += arg
         else: d[n] = arg
 
-    return d
+    d = {n : factor(collect_by_nc(arg)) for n, arg in d.items()}
+    if evaluate:
+        return Add(*[arg for arg in d.values()], evaluate=False)
+    else:
+        return d
 
 def bch_special_closed_form(X, Y, independent=False):
     """
@@ -60,7 +75,7 @@ def bch_special_closed_form(X, Y, independent=False):
     """
     if not isinstance(Y, Operator):
         raise ValueError("Y must be an Operator")
-    if debug: print("bch_special_closed_form: X =", X, "   Y =", Y)
+    if debug: print("bch_special_closed_form()\nX =", X, "\nY =", Y)
 
     comm = Commutator(X, Y)
     while True: # this should be implemented in Commutator class
@@ -68,7 +83,7 @@ def bch_special_closed_form(X, Y, independent=False):
         if comm == expr: break
         else: comm = expr
 
-    comm = simplify(comm.doit(independent=independent))
+    comm = simplify(comm.doit(independent=independent)).expand()
     if debug: print("comm: ", comm)
     if comm == 0: return Y
 
@@ -81,8 +96,9 @@ def bch_special_closed_form(X, Y, independent=False):
     if debug: print("u: ", u, "v: ", v, "c: ", c)
     if simplify((u*X + v*Y + c - comm).expand()) == 0:
         e = Y + comm * ((exp(v) - S.One)/v) # Eq. 52 in above paper
-        if v == 0: return S.One # instead of NaN
-        else: return e.expand()
+        if v == 0: return Y + u*X + c # instead of NaN
+        #else: return e.expand()
+        else: return exp(v)*Y + (u*X + c)*(1-exp(v))/v
     else:
         print("warning: special closed form doesn't apply...")
         return exp(X)*Y*exp(-X)
@@ -112,7 +128,7 @@ def unitary_transformation(U, O, N=None, collect_operators=None,
 
     subs = {op: bch_special_closed_form(A, op, independent=independent)
             for op in ops}
-    if debug: print("subs: ", print(subs))
+    if debug: print("\n".join(["sub {}: {}".format(o,s) for o,s in subs.items()]))
 
     return O.subs(subs, simultaneous=True)
 
@@ -127,6 +143,10 @@ def hamiltonian_transformation(U, H, time=None, hbar=1, N=None,
 
     Where U is of the form U = exp(A)
     """
+    t = [s for s in U.exp.free_symbols if str(s) == 't']
+    if t and not time:
+        print("Warning: a symbol t was found in U but time kwarg not passed")
+
     H_st = unitary_transformation(U, H, N=N,
                                   collect_operators=collect_operators,
                                   independent=independent,

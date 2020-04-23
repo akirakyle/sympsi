@@ -46,7 +46,7 @@ from collections import namedtuple
 from sympy import (Add, Mul, Pow, exp, latex, Integral, Sum, Integer, Symbol,
                    I, pi, simplify, oo, DiracDelta, KroneckerDelta, collect,
                    factorial, diff, Function, Derivative, Eq, symbols,
-                   Matrix, MatMul, Dummy)
+                   Matrix, MatMul, Dummy, Basic)
 
 from sympy.core.sympify import _sympify
 from sympy.core.relational import Relational
@@ -88,9 +88,36 @@ def html_table(data):
 
     return HTML(table_code)
 
-def latex_align(data, col_delim=" & "):
-    return Latex("\\begin{{align*}}\n{}\n\\end{{align*}}".format(" \\\\\n".join(
-        [col_delim.join([latex(col) for col in row]) for row in data])))
+def latex_align(data, env="align*", delim=None, breaks=None): # or set col_delim="&" for auto align
+    if isinstance(data, list):
+        delim = " " if delim is None else delim
+        body = " \\\\\n".join([delim.join([latex(col) for col in row])
+                               for row in data])
+
+    if isinstance(data, Basic):
+        args = Add.make_args(data)
+        delim = "& " if delim is None else delim
+        breaks = range(4, len(args)-3, 4) if breaks is None else breaks
+        breaks = zip([0] + list(breaks), list(breaks) + [len(args)])
+        def fmt_line(i, j):
+            line = latex(Add(*args[i:j]))
+            if i != 0 and latex(Add(*args[i:j]))[0] != '-':
+                line = "+" + line
+            return delim + line
+        body = "\\\\\n".join([fmt_line(i,j) for i,j in breaks])
+
+    return Latex("\\begin{{{0}}}\n{1}\n\\end{{{0}}}".format(env, body))
+
+def latex_multline(expr, breaks, env="multline*", prefix=""):
+    args = Add.make_args(expr)
+    breaks = zip([0] + breaks, breaks + [len(args)])
+    def fmt_line(i, j):
+        line = latex(Add(*args[i:j]))
+        if i != 0 and latex(Add(*args[i:j]))[0] != '-':
+            line = "+" + line
+        return prefix + line
+    return Latex("\\begin{{{0}}}\n{1}\n\\end{{{0}}}".format(env,
+        "\\\\\n".join([fmt_line(i,j) for i,j in breaks])))
 
 
 # -----------------------------------------------------------------------------
@@ -1144,7 +1171,7 @@ def _sceqm_factor_op(op, ops):
     return op.args[0], Mul(*(op.args[1:]))
 
 
-def semi_classical_eqm(H, c_ops, N=20, discard_unresolved=True):
+def semi_classical_eqm(H, c_ops, max_order=2, discard_unresolved=True):
     """
     Generate a set of semiclassical equations of motion from a Hamiltonian
     and set of collapse operators. Equations of motion for all operators that
@@ -1163,18 +1190,10 @@ def semi_classical_eqm(H, c_ops, N=20, discard_unresolved=True):
 
     t = symbols("t", positive=True)
 
-    n = 0
     while ops:
-
-        if n > N:
-            break
-
-        n += 1
-
-        _, idx = min((val, idx)
-                     for (idx, val) in enumerate([operator_order(op)
-                                                  for op in ops]))
-
+        order, idx = min((val, idx) for (idx, val)
+                         in enumerate([operator_order(op) for op in ops]))
+        if order > max_order: break
         op = ops.pop(idx)
 
         lhs, rhs = operator_master_equation(op, t, H, c_ops, use_eq=False)
