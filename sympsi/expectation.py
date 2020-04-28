@@ -69,6 +69,8 @@ class Expectation(Expr):
             args = (args[0], Integer(0))
         if len(args) == 2:
             args = (args[0], Integer(args[1]))
+        if hasattr(args[0], 'is_number') and args[0].is_number:
+            return args[0]
         return Expr.__new__(cls, *args)
     
     def _eval_expand_expectation(self, **hints):

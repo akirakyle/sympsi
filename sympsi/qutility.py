@@ -698,9 +698,8 @@ def operator_order(op):
 
     return 0
 
-
 def operator_sort_by_order(ops):
-    return sorted(ops, key=operator_order)
+    return sorted(sorted(ops, key=repr), key=operator_order)
 
 def drop_higher_order_terms(e, order):
     """
@@ -1067,40 +1066,33 @@ def lindblad_dissipator(a, rho):
     """
     Lindblad dissipator
     """
-    return (a * rho * Dagger(a) - rho * Dagger(a) * a / 2
-            - Dagger(a) * a * rho / 2)
-
-
-def master_equation(rho_t, t, H, a_ops, use_eq=True):
-    """
-    Lindblad master equation
-    """
-    #t = [s for s in rho_t.free_symbols if isinstance(s, Symbol)][0]
-
-    rhs = diff(rho_t, t)
-    lhs = (-I * Commutator(H, rho_t) +
-           sum([lindblad_dissipator(a, rho_t) for a in a_ops]))
-
-    return Eq(rhs, lhs) if use_eq else (rhs, lhs)
-
+    return (a*rho*Dagger(a) - rho*Dagger(a)*a/2 - Dagger(a)*a*rho/2)
 
 def operator_lindblad_dissipator(a, rho):
     """
     Lindblad operator dissipator
     """
-    return (Dagger(a) * rho * a - rho * Dagger(a) * a / 2
-            - Dagger(a) * a * rho / 2)
+    return (Dagger(a)*rho*a - rho*Dagger(a)*a/2 - Dagger(a)*a*rho/2)
 
+def master_equation(rho_t, t, H, a_ops, use_eq=True):
+    """
+    Lindblad master equation
+    """
+    lhs = diff(rho_t, t)
+    rhs = (-I*Commutator(H, rho_t) +
+           sum([lindblad_dissipator(a, rho_t) for a in a_ops]))
+
+    return Eq(lhs, rhs) if use_eq else (lhs, rhs)
 
 def operator_master_equation(op_t, t, H, a_ops, use_eq=True):
     """
     Adjoint master equation
     """
-    rhs = diff(op_t, t)
-    lhs = (I * Commutator(H, op_t) +
+    lhs = diff(op_t, t)
+    rhs = (I*Commutator(H, op_t) +
            sum([operator_lindblad_dissipator(a, op_t) for a in a_ops]))
 
-    return Eq(rhs, lhs) if use_eq else (rhs, lhs)
+    return Eq(lhs, rhs) if use_eq else (lhs, rhs)
 
 
 # -----------------------------------------------------------------------------

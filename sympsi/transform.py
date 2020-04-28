@@ -16,6 +16,8 @@ from sympy import (Add, Mul, Pow, exp, S, I, diff, simplify, factor)
 from sympy.core.basic import preorder_traversal
 from sympy.physics.quantum import Operator, Commutator, Dagger
 
+from sympsi.qutility import operator_order
+
 debug = False
 
 
@@ -34,18 +36,6 @@ def collect_by_nc(expr, evaluate=True):
         return Add(*[key*val for key, val in collected.items()])
     else:
         return collected
-
-def operator_order(op):
-    if isinstance(op, Operator):
-        return 1
-
-    if isinstance(op, Mul):
-        return sum([operator_order(arg) for arg in op.args])
-
-    if isinstance(op, Pow):
-        return operator_order(op.base) * op.exp
-
-    return 0
 
 def collect_by_order(expr, evaluate=True):
     """
