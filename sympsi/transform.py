@@ -133,7 +133,7 @@ def unitary_transformation(U, O, N=None, collect_operators=None,
     return O.subs(subs, simultaneous=True)
 
 
-def hamiltonian_transformation(U, H, time=None, hbar=1, N=None,
+def hamiltonian_transformation(U, H, t=None, hbar=1, N=None,
                                collect_operators=None,
                                independent=False, expansion_search=True):
     """
@@ -143,14 +143,14 @@ def hamiltonian_transformation(U, H, time=None, hbar=1, N=None,
 
     Where U is of the form U = exp(A)
     """
-    t = [s for s in U.exp.free_symbols if str(s) == 't']
-    if t and not time:
+    t_sym = [s for s in U.exp.free_symbols if str(s) == 't']
+    if t_sym and not t:
         print("Warning: a symbol t was found in U but time kwarg not passed")
 
     H_st = unitary_transformation(U, H, N=N,
                                   collect_operators=collect_operators,
                                   independent=independent,
                                   expansion_search=expansion_search)
-    H_td = - I * hbar * U* diff(Dagger(U), time) if time else 0
+    H_td = - I * hbar * U* diff(Dagger(U), t) if t else 0
     return H_st + H_td
 

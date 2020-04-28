@@ -23,7 +23,6 @@ __all__ = [
     'extract_all_operators',
     'operator_order',
     'operator_sort_by_order',
-    'collect_by_order',
     'drop_higher_order_terms',
     'drop_terms_containing',
     'drop_c_number_terms',
@@ -703,21 +702,6 @@ def operator_order(op):
 def operator_sort_by_order(ops):
     return sorted(ops, key=operator_order)
 
-def collect_by_order(e):
-    """
-    return dict d such that e == Add(*[d[n] for n in d])
-    where Expr d[n] contains only terms with operator order n
-    """
-    args = e.args if isinstance(e, Add) else [e]
-    # max_order = max([operator_order(arg) for arg in args])
-    d = {}
-    for arg in args:
-        n = operator_order(arg)
-        if n in d: d[n] += arg
-        else: d[n] = arg
-
-    return d
-
 def drop_higher_order_terms(e, order):
     """
     Drop any terms with operator order greater than order arg
@@ -1116,10 +1100,7 @@ def operator_master_equation(op_t, t, H, a_ops, use_eq=True):
     lhs = (I * Commutator(H, op_t) +
            sum([operator_lindblad_dissipator(a, op_t) for a in a_ops]))
 
-    if use_eq:
-        return Eq(rhs, lhs)
-    else:
-        return rhs, lhs
+    return Eq(rhs, lhs) if use_eq else (rhs, lhs)
 
 
 # -----------------------------------------------------------------------------
