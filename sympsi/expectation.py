@@ -99,7 +99,7 @@ class Expectation(Expr):
         """
         return the expectation value normally ordered operator if is_normal_order=True
         """
-        from sympsi.operatorordering import normal_order
+        from sympy.physics.quantum.operatorordering import normal_order
         if self.is_normal_order == True:
             return Expectation(normal_order(self.args[0]), False)
         return self

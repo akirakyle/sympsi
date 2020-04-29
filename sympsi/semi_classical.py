@@ -119,32 +119,57 @@ def generate_eqm(H, c_ops, t, independent=True, max_order=2,
     op_eqm = {op: op_eqm[op] for op in operator_sort_by_order(op_eqm.keys())}
     return op_eqm, unresolved_ops
 
-def _sceqm_factor_op(op, ops):
-    if isinstance(op, Pow):
-        for n in range(1, op.exp):
-            if Pow(op.base, op.exp - n) in ops and Pow(op.base, n) in ops:
-                return op.base, Pow(op.base, op.exp - 1)
+def _sceqm_factor_op(uop, ops):
+    if uop in ops: return [uop]
+    args = []
+    for a in Mul.make_args(uop):
+        args += [a.base for n in range(a.exp)] if isinstance(a, Pow) else [a]
+    if len(args) < 2: return None # nothing to factor
 
-        raise Exception("Failed to find factorization of %r" % op)
+    # first try to partition
+    for i in range(1, len(args)):
+        if Mul(*(args[:i])) in ops and Mul(*(args[i:])) in ops:
+            return [Mul(*(args[:i])), Mul(*(args[i:]))]
 
-    if isinstance(op, Mul):
-        args = []
-        for arg in op.args:
-            if isinstance(arg, Pow):
-                for n in range(arg.exp):
-                    args.append(arg.base)
-            else:
-                args.append(arg)
+    # then do recursive search
+    for i in range(1, len(args)):
+        head, tail = Mul(*(args[:i])), Mul(*(args[i:]))
+        head_fact = _sceqm_factor_op(head, ops)
+        tail_fact = _sceqm_factor_op(tail, ops)
+        cands = []
+        if head in ops and tail_fact is not None:
+            cands += [[head] + tail_fact]
+        if tail in ops and head_fact is not None:
+            cands += [tail_fact + [head]]
+        if head_fact is not None and tail_fact is not None:
+            cands += [head_fact + tail_fact]
+        if cands:
+            _, idx = min((len(c), i) for (i, c) in enumerate(cands))
+            return cands[idx]
 
-        for n in range(1, len(op.args)):
-            if Mul(*(args[:n])) in ops and Mul(*(args[n:])) in ops:
-                return Mul(*(args[:n])), Mul(*(args[n:]))
+    #for i in range(1, len(uop.args)):
+    #    for j in range(i+1, len(uop.args)+1):
+    #        if Mul(*(args[i:j])) in ops:
+    #            first = _sceqm_factor_op(Mul(*(args[:i])), ops)
+    #            if first is not None:
+    #                last = _sceqm_factor_op(Mul(*(args[j:])), ops)
+    #                if last is not None:
+    #                    return first + [Mul(*(args[i:j]))] + last
 
-        raise Exception("Failed to find factorization of %r" % op)
+    #if isinstance(uop, Pow):
+    #    op_pows = [1] if uop.base in ops else []
+    #    op_pows += [op.exp for op in ops
+    #                if isinstance(op, Pow) and op.base == uop.base]
+    #    # do the naive thing so this doesn't turn into solving subset sum
+    #    for n in sorted(op_pows):
+    #        if uop.exp % n == 0:
+    #            return [Pow(uop.base, n)] * (uop.exp // n)
 
-    return op.args[0], Mul(*(op.args[1:]))
+    #    raise Exception("Failed to find factorization of %r" % uop)
+    return None
 
-def eqm_to_semi_classical(op_eqm, unresolved_ops):
+
+def eqm_to_semi_classical(op_eqm, unresolved_ops, partition=False):
     op_factorization = {}
     sc_eqm = {}
     for op, eqm in op_eqm.items():
@@ -152,6 +177,8 @@ def eqm_to_semi_classical(op_eqm, unresolved_ops):
 
         for uop in unresolved_ops:
             sub_ops = _sceqm_factor_op(uop, op_eqm.keys())
+            if sub_ops is None:
+                raise Exception("Failed to find factorization of %r" % uop)
             factored_expt = Mul(*(Expectation(o) for o in sub_ops))
             op_factorization[Expectation(uop)] = factored_expt
             sc_eqm[op] = sc_eqm[op].subs(Expectation(uop), factored_expt)
