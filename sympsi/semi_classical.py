@@ -14,7 +14,7 @@ from collections import namedtuple
 from sympy import (Add, Mul, Pow, exp, Symbol, symbols,
                    I, pi, simplify, oo, 
                    diff, Function, Derivative, Eq, 
-                   Matrix, MatMul)
+                   Matrix, MatMul, linear_eq_to_matrix)
 
 from sympy.physics.quantum import Operator, Commutator, Dagger
 from sympy.physics.quantum.operatorordering import normal_ordered_form
@@ -146,26 +146,6 @@ def _sceqm_factor_op(uop, ops):
         if cands:
             _, idx = min((len(c), i) for (i, c) in enumerate(cands))
             return cands[idx]
-
-    #for i in range(1, len(uop.args)):
-    #    for j in range(i+1, len(uop.args)+1):
-    #        if Mul(*(args[i:j])) in ops:
-    #            first = _sceqm_factor_op(Mul(*(args[:i])), ops)
-    #            if first is not None:
-    #                last = _sceqm_factor_op(Mul(*(args[j:])), ops)
-    #                if last is not None:
-    #                    return first + [Mul(*(args[i:j]))] + last
-
-    #if isinstance(uop, Pow):
-    #    op_pows = [1] if uop.base in ops else []
-    #    op_pows += [op.exp for op in ops
-    #                if isinstance(op, Pow) and op.base == uop.base]
-    #    # do the naive thing so this doesn't turn into solving subset sum
-    #    for n in sorted(op_pows):
-    #        if uop.exp % n == 0:
-    #            return [Pow(uop.base, n)] * (uop.exp // n)
-
-    #    raise Exception("Failed to find factorization of %r" % uop)
     return None
 
 
@@ -208,18 +188,10 @@ def sc_ode_to_matrix(sc_ode, op_func_map, t):
     Convert a set of semiclassical equations of motion to matrix form.
     """
     ops = operator_sort_by_order(sc_ode.keys())
-    As = [op_func_map[op] for op in ops]
-    A = Matrix(As)
-    A_sub_0 = {A: 0 for A in As}
-    B = Matrix([[sc_ode[op].rhs.subs(A_sub_0)] for op in ops])
-
-    def make_row(row_op):
-        row_A = op_func_map[row_op]
-        A_sub_0 = {A: 0 for A in As if A != row_A}
-        return [((sc_ode[col_op].rhs - B[col]).subs(A_sub_0)/row_A).expand()
-                for col, col_op in enumerate(ops)]
-    
-    M = Matrix([make_row(row_op) for row_op in ops]).T
-
-    return Eq(-Derivative(A, t), Add(B, MatMul(M, A), evaluate=False),
-              evaluate=False), A, M, B
+    A = Matrix([op_func_map[op] for op in ops])
+    subs = [(op_func_map[op], Symbol(op_func_map[op].name)) for op in ops]
+    eqns = [sc_ode[op].rhs.subs(subs) for op in ops]
+    M, C = linear_eq_to_matrix(eqns, list(zip(*subs))[1])
+    A_eq = Eq(-Derivative(A, t), Add(-C, MatMul(M, A), evaluate=False),
+              evaluate=False), 
+    return A_eq, A, M, -C
