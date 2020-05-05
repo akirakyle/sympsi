@@ -1,59 +1,20 @@
 """
-Utitility functions for working with operator transformations in
-sympsi.
+Unitary and Hamiltonian operator transformations
 """
 
 __all__ = [
-    'collect_by_nc',
-    'collect_by_order',
     'bch_special_closed_form',
     'unitary_transformation',
     'hamiltonian_transformation'
     ]
 
-from collections import defaultdict
-from sympy import (Add, Mul, Pow, exp, S, I, diff, simplify, factor)
+from sympy import (Add, Mul, Pow, exp, S, I, diff, simplify)
 from sympy.core.basic import preorder_traversal
 from sympy.physics.quantum import Operator, Commutator, Dagger
 
-from sympsi.qutility import operator_order
+from sympsi.qutility import collect_by_nc, operator_order
 
 debug = False
-
-
-def collect_by_nc(expr, evaluate=True):
-    collected, disliked = defaultdict(list), S.Zero
-
-    for arg in Add.make_args(expr):
-        c, nc = arg.args_cnc()
-        if nc: collected[Mul(*nc)].append(Mul(*c))
-        else: disliked += Mul(*c)
-
-    collected = {k: Add(*v) for k, v in collected.items()}
-    if disliked is not S.Zero:
-        collected[S.One] = disliked
-    if evaluate:
-        return Add(*[key*val for key, val in collected.items()])
-    else:
-        return collected
-
-def collect_by_order(expr, evaluate=True):
-    """
-    return dict d such that expr == Add(*[d[n] for n in d])
-    where Expr d[n] contains only terms with operator order n
-    """
-    args = Add.make_args(expr)
-    d = {}
-    for arg in args:
-        n = operator_order(arg)
-        if n in d: d[n] += arg
-        else: d[n] = arg
-
-    d = {n : factor(collect_by_nc(arg)) for n, arg in d.items()}
-    if evaluate:
-        return Add(*[arg for arg in d.values()], evaluate=False)
-    else:
-        return d
 
 def bch_special_closed_form(X, Y, independent=False):
     """

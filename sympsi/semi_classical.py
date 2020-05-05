@@ -1,6 +1,5 @@
 """
-Utitility functions for working with operator transformations in
-sympsi.
+Semiclassical equations of motion
 """
 
 __all__ = [
@@ -10,59 +9,18 @@ __all__ = [
     'sc_ode_to_matrix'
     ]
 
-from collections import namedtuple
-from sympy import (Add, Mul, Pow, exp, Symbol, symbols,
-                   I, pi, simplify, oo, 
-                   diff, Function, Derivative, Eq, 
+from sympy import (Add, Mul, Pow, exp, Symbol, I, pi, simplify, oo, 
+                   Function, Derivative, Eq, 
                    Matrix, MatMul, linear_eq_to_matrix)
 
-from sympy.physics.quantum import Operator, Commutator, Dagger
 from sympy.physics.quantum.operatorordering import normal_ordered_form
 
 from sympsi.expectation import Expectation
-from sympsi.qutility import (operator_order, operator_sort_by_order,
+from sympsi.qutility import (extract_all_operators,
+                             operator_order, operator_sort_by_order,
                              drop_terms_containing, operator_master_equation)
 
 debug = False
-
-def extract_operators(e, independent=False):
-    return list(set([e for e in preorder_traversal(O)
-                     if isinstance(e, Operator)]))
-
-
-def extract_operator_products(expr):
-    """
-    Return a list of unique quantum operator products in the expression e.
-    """
-    if isinstance(expr, Operator):
-        return [expr]
-
-    elif isinstance(expr, Add):
-        return list(set([op for arg in expr.args
-                         for op in extract_operator_products(arg)]))
-
-    c, nc = expr.args_cnc()
-    return [Mul(*nc)] if nc else []
-
-def extract_operator_subexprs(expr):
-    args = Mul.make_args(expr)
-    return [Mul(*args[i:j]) for i in range(len(args) + 1)
-            for j in range(i + 1, len(args) + 1)]
-
-def extract_all_operators(expr):
-    """
-    Extract all unique operators in the normal ordered for of a given
-    operator expression, including composite operators. The resulting list
-    of operators are sorted in increasing order.
-    """
-    ops = extract_operator_products(expr)
-
-    return list(set([op_sub for op in ops
-                     for op_sub in extract_operator_subexprs(op)]))
-
-# -----------------------------------------------------------------------------
-# Semiclassical equations of motion
-#
 
 def generate_eqm(H, c_ops, t, independent=True, max_order=2,
                  discard_unresolved=True):
@@ -193,5 +151,5 @@ def sc_ode_to_matrix(sc_ode, op_func_map, t):
     eqns = [sc_ode[op].rhs.subs(subs) for op in ops]
     M, C = linear_eq_to_matrix(eqns, list(zip(*subs))[1])
     A_eq = Eq(-Derivative(A, t), Add(-C, MatMul(M, A), evaluate=False),
-              evaluate=False), 
+              evaluate=False)
     return A_eq, A, M, -C
